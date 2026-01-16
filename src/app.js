@@ -27,8 +27,13 @@ if (ENV.NODE_ENV === "production") {
     });
 }
 
-app.use(cors());
-// app.options("*", cors()); // Removed to fix Express 5 wildcard error
+app.use(cors({
+    origin: (origin, callback) => {
+        // Allow all requests (dynamic origin reflection) to fix 'NO ACCESS-CONTROL-ALLOW-ORIGIN'
+        callback(null, origin || "*");
+    },
+    credentials: true
+}));
 app.use(clerkMiddleware());//this adds auth field to request object;
 
 // Health check
