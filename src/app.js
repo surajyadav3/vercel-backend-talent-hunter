@@ -28,10 +28,7 @@ if (ENV.NODE_ENV === "production") {
 }
 
 app.use(cors({
-    origin: (origin, callback) => {
-        // Allow all requests (dynamic origin reflection) to fix 'NO ACCESS-CONTROL-ALLOW-ORIGIN'
-        callback(null, origin || "*");
-    },
+    origin: ENV.CLIENT_URL || true,
     credentials: true
 }));
 app.use(clerkMiddleware());//this adds auth field to request object;
