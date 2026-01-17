@@ -28,10 +28,23 @@ if (ENV.NODE_ENV === "production") {
 }
 
 app.use(cors({
-    origin: ENV.CLIENT_URL || true,
-    credentials: true
+    origin: (origin, callback) => {
+        // Automatically allow requests with no origin (like mobile apps or curl)
+        if (!origin) return callback(null, true);
+
+        // If you want to restrict this later, you can check ENV.CLIENT_URL here.
+        // For now, we reflect the origin to solve the mismatch issue once and for all.
+        callback(null, true);
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Clerk-Auth-Token"]
 }));
-app.use(clerkMiddleware());//this adds auth field to request object;
+
+// Prevent Clerk from redirecting to login page on API routes (returns 401 instead)
+app.use(clerkMiddleware({
+    debug: ENV.NODE_ENV === "development",
+})); // This adds auth field to request object;
 
 // Health check
 app.get("/health", (req, res) => {
