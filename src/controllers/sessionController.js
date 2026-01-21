@@ -13,6 +13,21 @@ export async function createSession(req, res) {
                return res.status(400).json({ message: "Problem and difficulty  are required" })
           }
 
+          // Check if there is already an active session for the same problem created by this host
+          const existingSession = await Session.findOne({
+               problem,
+               host: userId,
+               status: "active"
+          }).populate("host", "name profileImage email clerkId");
+
+          if (existingSession) {
+               return res.status(200).json({
+                    success: true,
+                    session: existingSession,
+                    message: "An active room for this question already exists. Joining that room."
+               });
+          }
+
           //generate a unique call id for stream video
           const callId = `session_${Date.now()}_${Math.random().toString(36).substring(7)}`
 

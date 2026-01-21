@@ -12,8 +12,12 @@ import sessionRoutes from "./routes/sessionRoute.js";
 import userRoutes from "./routes/userRoutes.js"; // Moved import here
 
 import { protectRoute } from "./middleware/protectRoute.js";
+import compression from "compression";
 
 const app = express();
+
+// Optimization: Gzip compression for all responses
+app.use(compression());
 
 const rootDir = process.cwd();
 const __dirname = path.resolve();
