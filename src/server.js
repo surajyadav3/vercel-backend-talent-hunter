@@ -14,7 +14,6 @@ const startServer = async () => {
      const port = parseInt(ENV.PORT || "5000", 10);
 
      console.log("🚀 Starting server startup sequence...");
-     console.log("📝 Environment Keys:", Object.keys(process.env).filter(k => !k.includes("KEY") && !k.includes("SECRET")));
 
      console.log("🚀 Startup config:", {
           port,
@@ -24,13 +23,11 @@ const startServer = async () => {
      });
 
      try {
+          // Connect to DB BEFORE starting the server — ensures requests don't hit before DB is ready
+          await connectDB();
+
           const server = app.listen(port, () => {
                console.log(`✅ Server successfully started and listening on port ${port}`);
-
-               // Connect to DB in background
-               connectDB().catch(err => {
-                    console.error("❌ Background DB connection failed:", err);
-               });
           });
 
           server.on('error', (err) => {
@@ -47,3 +44,4 @@ const startServer = async () => {
 };
 
 startServer();
+

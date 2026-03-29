@@ -36,6 +36,10 @@ const userSchema = new mongoose.Schema({
      { timestamps: true } //created at;
 );
 
+// Performance indexes
+userSchema.index({ problemsSolved: -1 }); // Leaderboard sorting
+userSchema.index({ clerkId: 1 }, { unique: true }); // Fast lookups by clerkId (already unique, this makes it explicit)
+
 
 const User = mongoose.model("User", userSchema)
 

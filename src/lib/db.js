@@ -19,6 +19,10 @@ export const connectDB = async () => {
 
           const opts = {
                bufferCommands: false,
+               maxPoolSize: 10, // Increase connection pool for better concurrency
+               minPoolSize: 2,  // Keep minimum connections ready
+               socketTimeoutMS: 30000,
+               serverSelectionTimeoutMS: 10000,
           };
 
           cached.promise = mongoose.connect(ENV.DB_URL, opts).then((mongoose) => {

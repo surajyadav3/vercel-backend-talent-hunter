@@ -23,7 +23,7 @@ const rootDir = process.cwd();
 const __dirname = path.resolve();
 
 //middlewares
-app.use(express.json());
+app.use(express.json({ limit: "1mb" })); // Limit payload size
 if (ENV.NODE_ENV === "production") {
     app.use((req, res, next) => {
         console.log(`📡 [${req.method}] ${req.url}`);
@@ -65,11 +65,13 @@ app.get("/video-calls", protectRoute, (req, res) => {
     res.status(200).json({ msg: "Authorized" });
 });
 
-// Debug Logging
-app.use((req, res, next) => {
-    console.log(`📡 Request: ${req.method} ${req.url}`);
-    next();
-});
+// Debug Logging (development only)
+if (ENV.NODE_ENV === "development") {
+    app.use((req, res, next) => {
+        console.log(`📡 Request: ${req.method} ${req.url}`);
+        next();
+    });
+}
 
 // API Routes
 app.use("/api/inngest", serve({ client: inngest, functions }));

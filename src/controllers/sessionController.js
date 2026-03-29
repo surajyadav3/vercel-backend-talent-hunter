@@ -1,4 +1,3 @@
-import { startSession } from "mongoose"
 import { chatClient, streamClient, upsertStreamUser } from "../lib/stream.js"
 import Session from "../models/Session.js"
 import User from "../models/User.js"
@@ -18,7 +17,7 @@ export async function createSession(req, res) {
                problem,
                host: userId,
                status: "active"
-          }).populate("host", "name profileImage email clerkId");
+          }).populate("host", "name profileImage email clerkId").lean();
 
           if (existingSession) {
                return res.status(200).json({
@@ -31,15 +30,15 @@ export async function createSession(req, res) {
           //generate a unique call id for stream video
           const callId = `session_${Date.now()}_${Math.random().toString(36).substring(7)}`
 
-          // Ensure user exists in Stream before creating call
-          await upsertStreamUser({
-               id: clerkId,
-               name: req.user.name,
-               image: req.user.profileImage,
-          });
-
-          //create session in db 
-          const session = await Session.create({ problem, difficulty, host: userId, callId });
+          // Ensure user exists in Stream & create session in DB in parallel
+          const [, session] = await Promise.all([
+               upsertStreamUser({
+                    id: clerkId,
+                    name: req.user.name,
+                    image: req.user.profileImage,
+               }),
+               Session.create({ problem, difficulty, host: userId, callId })
+          ]);
 
           //create a stream video call 
           try {
@@ -88,9 +87,11 @@ export async function getActiveSessions(_, res) {
           const sessions = await Session.find({ status: "active" })
                .populate("host", "name profileImage email clerkId")
                .sort({ createdAt: -1 })
-               .limit(20);
+               .limit(20)
+               .lean(); // lean() returns plain JS objects, ~5x faster
 
-
+          // Set short cache header for active sessions (10 seconds)
+          res.set("Cache-Control", "public, max-age=10, stale-while-revalidate=30");
           res.status(200).json({ sessions })
      } catch (error) {
           console.log("Error in getActiveSessions controller:", error.message);
@@ -107,7 +108,8 @@ export async function getMyRecentSessions(req, res) {
                $or: [{ host: userId }, { participant: userId }],
           })
                .sort({ createdAt: -1 })
-               .limit(20);
+               .limit(20)
+               .lean(); // lean() for read-only data
 
           res.status(200).json({ sessions })
 
@@ -125,6 +127,7 @@ export async function getSessionById(req, res) {
           const session = await Session.findById(id)
                .populate("host", "name email profileImage clerkId")
                .populate("participant", "name email profileImage clerkId")
+               .lean(); // lean() for read-only data
 
           if (!session) return res.status(404).json({ message: "Session not found" })
 
@@ -186,22 +189,26 @@ export async function endSession(req, res) {
                return res.status(400).json({ message: "Session is already completed " })
           }
 
-          //delete vc 
+          // Run all cleanup operations in parallel for speed
+          const cleanupPromises = [
+               streamClient.video.call("default", session.callId).delete({ hard: true }),
+               chatClient.channel("messaging", session.callId).delete(),
+          ];
 
-          const call = streamClient.video.call("default", session.callId)
-          await call.delete({ hard: true })
-
-          //delete chat 
-          const channel = chatClient.channel("messaging", session.callId)
-          await channel.delete();
-
-          // Increment problemsSolved for host and participant
+          // Increment problemsSolved in parallel too
           if (session.host) {
-               await User.findByIdAndUpdate(session.host, { $inc: { problemsSolved: 1 } });
+               cleanupPromises.push(
+                    User.findByIdAndUpdate(session.host, { $inc: { problemsSolved: 1 } })
+               );
           }
           if (session.participant) {
-               await User.findByIdAndUpdate(session.participant, { $inc: { problemsSolved: 1 } });
+               cleanupPromises.push(
+                    User.findByIdAndUpdate(session.participant, { $inc: { problemsSolved: 1 } })
+               );
           }
+
+          // Execute all in parallel
+          await Promise.allSettled(cleanupPromises);
 
           session.status = "completed"
           await session.save()
