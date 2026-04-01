@@ -1,12 +1,18 @@
 import { chatClient, streamClient, upsertStreamUser } from "../lib/stream.js"
 import Session from "../models/Session.js"
 import User from "../models/User.js"
+import { sendInviteEmail } from "../lib/email.js"
 
 export async function createSession(req, res) {
      try {
           const { problem, difficulty } = req.body
           const userId = req.user._id
           const clerkId = req.user.clerkId
+          const userRole = req.user.role
+
+          if (userRole !== "admin" && userRole !== "recruiter") {
+               return res.status(403).json({ message: "Only an admin or recruiter can create an interview session" })
+          }
 
           if (!problem || !difficulty) {
                return res.status(400).json({ message: "Problem and difficulty  are required" })
@@ -73,6 +79,12 @@ export async function createSession(req, res) {
 
           await session.populate("host", "name profileImage email clerkId");
 
+          // If inviteEmail is provided, send the invite automatically
+          if (req.body.inviteEmail) {
+             const sessionLink = `${process.env.CLIENT_URL || "http://localhost:5173"}/session/${session._id}`;
+             await sendInviteEmail(req.body.inviteEmail, sessionLink, problem, req.user.name);
+          }
+
           res.status(201).json({ success: true, session });
 
      } catch (error) {
@@ -82,19 +94,36 @@ export async function createSession(req, res) {
      }
 }
 
-export async function getActiveSessions(_, res) {
+export async function getActiveSessions(req, res) {
      try {
-          const sessions = await Session.find({ status: "active" })
+          const userId = req.user._id;
+          const userRole = req.user.role;
+          
+          let query = { status: "active" };
+          
+          // ROLE-STRICT VISIBILITY: 
+          // Recruiters see what they HOST.
+          // Candidates see where they are the PARTICIPANT.
+          if (userRole === "recruiter") {
+               query.host = userId;
+          } else if (userRole === "candidate") {
+               query.participant = userId;
+          } else if (userRole !== "admin") {
+               // Fallback: only items where user is involved
+               query.$or = [{ host: userId }, { participant: userId }];
+          }
+
+          const sessions = await Session.find(query)
                .populate("host", "name profileImage email clerkId")
                .sort({ createdAt: -1 })
                .limit(20)
-               .lean(); // lean() returns plain JS objects, ~5x faster
+               .lean();
 
-          // Set short cache header for active sessions (10 seconds)
-          res.set("Cache-Control", "public, max-age=10, stale-while-revalidate=30");
-          res.status(200).json({ sessions })
+          // Force headers to prevent any browser/CDN caching of session lists
+          res.set("Cache-Control", "private, no-cache, no-store, must-revalidate");
+          res.status(200).json({ sessions });
      } catch (error) {
-          console.log("Error in getActiveSessions controller:", error.message);
+          console.error("Error in getActiveSessions:", error);
           res.status(500).json({ message: "Internal Server Error" });
      }
 }
@@ -102,21 +131,26 @@ export async function getActiveSessions(_, res) {
 export async function getMyRecentSessions(req, res) {
      try {
           const userId = req.user._id
-          //get those sessions where user is either host or participant 
-          const sessions = await Session.find({
-               status: "completed",
-               $or: [{ host: userId }, { participant: userId }],
-          })
-               .sort({ createdAt: -1 })
+          const userRole = req.user.role;
+
+          let query = { status: "completed" };
+          
+          // Show only relevant history for non-admins
+          if (userRole !== "admin") {
+               query.$or = [{ host: userId }, { participant: userId }];
+          }
+
+          const sessions = await Session.find(query)
+               .populate("host", "name profileImage email clerkId")
+               .populate("participant", "name profileImage email clerkId")
+               .sort({ updatedAt: -1 })
                .limit(20)
-               .lean(); // lean() for read-only data
+               .lean(); 
 
           res.status(200).json({ sessions })
-
      } catch (error) {
-          console.log("Error in getMyRecentSessions controllers:", error.message);
+          console.error("Error in getMyRecentSessions:", error);
           res.status(500).json({ message: "Internal Server Error" });
-
      }
 }
 
@@ -217,5 +251,54 @@ export async function endSession(req, res) {
      } catch (error) {
           console.log("Error in endSession controller:", error.message);
           res.status(500).json({ message: "Internal Server Error" })
+     }
+}
+
+
+export async function inviteStudent(req, res) {
+     try {
+          const { id } = req.params; // session ID
+          const { studentEmail, studentClerkId } = req.body;
+          const hostId = req.user._id;
+
+          if (!studentEmail && !studentClerkId) {
+               return res.status(400).json({ message: "Student email or Clerk ID is required" });
+          }
+
+          const session = await Session.findById(id).populate("host", "name");
+          if (!session) return res.status(404).json({ message: "Session not found" });
+
+          // check if current user is the host
+          if (session.host._id.toString() !== hostId.toString()) {
+               return res.status(403).json({ message: "Only the host can invite students" });
+          }
+
+          // find the student in the database (optional for email invites, required for Clerk ID)
+          let student;
+          let targetEmail = studentEmail;
+
+          if (studentClerkId) {
+               student = await User.findOne({ clerkId: studentClerkId });
+               if (!student) {
+                    return res.status(404).json({ message: "Student with this Clerk ID not found." });
+               }
+               targetEmail = student.email;
+          }
+
+          if (!targetEmail) {
+               return res.status(400).json({ message: "A valid email address is required for invitation." });
+          }
+
+          const sessionLink = `${process.env.CLIENT_URL || "http://localhost:5173"}/session/${id}`;
+          const isEmailSent = await sendInviteEmail(targetEmail, sessionLink, session.problem, session.host.name);
+
+          if (!isEmailSent) {
+               return res.status(500).json({ message: "Failed to send invitation email." });
+          }
+
+          res.status(200).json({ message: `Invitation successfully sent to ${studentEmail}` });
+     } catch (error) {
+          console.log("Error in inviteStudent controller:", error.message);
+          res.status(500).json({ message: "Internal Server Error" });
      }
 }

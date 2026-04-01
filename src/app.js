@@ -10,6 +10,8 @@ import { clerkMiddleware } from '@clerk/express'
 import chatRoutes from "./routes/chatRoutes.js";
 import sessionRoutes from "./routes/sessionRoute.js";
 import userRoutes from "./routes/userRoutes.js"; // Moved import here
+import authRoutes from "./routes/authRoutes.js";
+import submissionRoutes from "./routes/submissionRoutes.js";
 
 import { protectRoute } from "./middleware/protectRoute.js";
 import compression from "compression";
@@ -45,9 +47,16 @@ app.use(cors({
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Clerk-Auth-Token"]
 }));
 
+// Debug Clerk Configuration
+if (process.env.NODE_ENV !== "production") {
+    console.log("🛠️ Clerk Middleware Init: secretKey starts with", (ENV.CLERK_SECRET_KEY || "NONE").substring(0, 7));
+}
+
 // Prevent Clerk from redirecting to login page on API routes (returns 401 instead)
 app.use(clerkMiddleware({
-    debug: ENV.NODE_ENV === "development",
+    publishableKey: ENV.CLERK_PUBLISHABLE_KEY,
+    secretKey: ENV.CLERK_SECRET_KEY,
+    debug: true,
 })); // This adds auth field to request object;
 
 // Health check
@@ -77,7 +86,9 @@ if (ENV.NODE_ENV === "development") {
 app.use("/api/inngest", serve({ client: inngest, functions }));
 app.use("/api/chat", chatRoutes);
 app.use("/api/sessions", sessionRoutes);
+app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/submission", submissionRoutes);
 
 // Root Health Check
 app.get("/", (req, res) => res.json({ status: "Backend is Running!", version: "1.0.0" }));

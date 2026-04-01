@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { ENV } from "./env.js";
+import { seedAdmin } from "./seedAdmin.js";
 
 let cached = global.mongoose;
 
@@ -19,15 +20,16 @@ export const connectDB = async () => {
 
           const opts = {
                bufferCommands: false,
-               maxPoolSize: 10, // Increase connection pool for better concurrency
-               minPoolSize: 2,  // Keep minimum connections ready
+               maxPoolSize: 10,
+               minPoolSize: 2,
                socketTimeoutMS: 30000,
                serverSelectionTimeoutMS: 10000,
           };
 
-          cached.promise = mongoose.connect(ENV.DB_URL, opts).then((mongoose) => {
+          cached.promise = mongoose.connect(ENV.DB_URL, opts).then(async (mongooseInstance) => {
                console.log("✅ Connected to MongoDB");
-               return mongoose;
+               await seedAdmin();
+               return mongooseInstance;
           });
      }
 

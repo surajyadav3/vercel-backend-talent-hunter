@@ -21,4 +21,7 @@ export const ENV = {
      STREAM_API_SECRET: getEnv("STREAM_API_SECRET"),
      CLERK_PUBLISHABLE_KEY: getEnv("CLERK_PUBLISHABLE_KEY"),
      CLERK_SECRET_KEY: getEnv("CLERK_SECRET_KEY"),
+     JWT_SECRET: getEnv("JWT_SECRET", "very_secret_key_123"),
+     GMAIL_USER: getEnv("GMAIL_USER"),
+     GMAIL_PASS: getEnv("GMAIL_PASS"),
 };   

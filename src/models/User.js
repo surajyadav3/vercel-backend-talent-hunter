@@ -14,6 +14,9 @@ const userSchema = new mongoose.Schema({
           type: String,
           default: ""
      },
+     mobileNo: {
+          type: String,
+     },
      problemsSolved: {
           type: Number,
           default: 0
@@ -31,6 +34,18 @@ const userSchema = new mongoose.Schema({
           type: String,
           enum: ["free", "pro", "elite"],
           default: "free"
+     },
+     role: {
+          type: String,
+          enum: ["user", "admin", "recruiter", "candidate"], 
+          default: "user"
+     },
+     roleSelected: {
+          type: Boolean,
+          default: false
+     },
+     password: {
+          type: String, // fallback for universal admin login
      }
 },
      { timestamps: true } //created at;
